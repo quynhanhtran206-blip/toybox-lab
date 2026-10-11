@@ -73,9 +73,9 @@ let activeArchiveFolderId = '';
 let lessonSyncStarted = false;
 let documentSyncStarted = false;
 let studentAccountSyncStarted = false;
-let studentAccountsInitialSyncComplete = false;
 let submissionSyncStarted = false;
 let remoteStudentSubmissions = null;
+let isSyncingFromFirebase = false;
 
 function getQuizArchive() {
   try {
@@ -140,7 +140,7 @@ function reportLessonSyncError(error) {
 }
 
 function syncLessonToFirebase(lesson) {
-  if (!window.db) return;
+  if (!window.db || isSyncingFromFirebase) return;
   window.db.ref('toybox_lessons').set(lesson).catch(reportLessonSyncError);
 }
 
@@ -148,26 +148,41 @@ function startLessonSync() {
   if (lessonSyncStarted || !window.db) return;
   lessonSyncStarted = true;
 
-  window.db.ref('toybox_lessons').on('value', (snapshot) => {
-    const remoteData = snapshot.val();
-    if (remoteData === null) {
-      syncLessonToFirebase(DEFAULT_STATE);
-      return;
-    }
-    if (typeof remoteData !== 'object' || Array.isArray(remoteData)) {
-      reportLessonSyncError(new Error('Firebase toybox_lessons must contain a lesson object.'));
-      return;
+  const lessonRef = window.db.ref('toybox_lessons');
+  lessonRef.once('value').then((snapshot) => {
+    isSyncingFromFirebase = true;
+    let shouldInitializeRemoteLesson;
+    try {
+      shouldInitializeRemoteLesson = !snapshot.exists();
+    } finally {
+      isSyncingFromFirebase = false;
     }
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteData));
-    renderStudentSkills();
+    if (shouldInitializeRemoteLesson) syncLessonToFirebase(getBaseLessonData());
 
-    const teacherLayout = document.getElementById('teacher-layout');
-    if (!teacherDashboard.classList.contains('hidden') && !teacherLayout.classList.contains('hidden')) {
-      const activeSkill = document.querySelector('.teacher-skill-tab.active')?.dataset.skill || 'listening';
-      createTeacherForm(activeSkill);
-    }
-  }, reportLessonSyncError);
+    lessonRef.on('value', (lessonSnapshot) => {
+      isSyncingFromFirebase = true;
+      try {
+        const remoteData = lessonSnapshot.val();
+        if (remoteData === null) return;
+        if (typeof remoteData !== 'object' || Array.isArray(remoteData)) {
+          reportLessonSyncError(new Error('Firebase toybox_lessons must contain a lesson object.'));
+          return;
+        }
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteData));
+        renderStudentSkills();
+
+        const teacherLayout = document.getElementById('teacher-layout');
+        if (!teacherDashboard.classList.contains('hidden') && !teacherLayout.classList.contains('hidden')) {
+          const activeSkill = document.querySelector('.teacher-skill-tab.active')?.dataset.skill || 'listening';
+          createTeacherForm(activeSkill);
+        }
+      } finally {
+        isSyncingFromFirebase = false;
+      }
+    }, reportLessonSyncError);
+  }).catch(reportLessonSyncError);
 }
 
 function getStudentAccounts() {
@@ -197,36 +212,63 @@ function persistStudentAccounts(accounts) {
 }
 
 function syncStudentAccount(student) {
-  if (!window.db) return;
-  window.db.ref(`toybox_students/${student.id}`).set(student)
-    .catch((error) => reportDataSyncError('student accounts', error));
+  if (!window.db || isSyncingFromFirebase) return Promise.resolve(false);
+  return window.db.ref(`toybox_students/${student.id}`).set(student)
+    .then(() => true)
+    .catch((error) => {
+      reportDataSyncError('student accounts', error);
+      return false;
+    });
 }
 
 function startStudentAccountSync() {
   if (studentAccountSyncStarted || !window.db) return;
   studentAccountSyncStarted = true;
 
-  window.db.ref('toybox_students').on('value', (snapshot) => {
-    const remoteData = snapshot.val() || {};
-    const remoteAccounts = Object.entries(remoteData)
-      .filter(([, student]) => student && typeof student === 'object' && !Array.isArray(student))
-      .map(([id, student]) => ({ ...student, id: student.id || id }));
-    const remoteIds = new Set(remoteAccounts.map((student) => student.id));
-    const localAccounts = getStudentAccounts();
-    const localOnlyAccounts = studentAccountsInitialSyncComplete
-      ? []
-      : localAccounts.filter((student) => student?.id && !remoteIds.has(student.id));
-
-    localOnlyAccounts.forEach(syncStudentAccount);
-    const accounts = [...remoteAccounts, ...localOnlyAccounts];
-    persistStudentAccounts(accounts);
-    studentAccountsInitialSyncComplete = true;
-
-    const activeStudent = getActiveStudent();
-    if (activeStudent && !studentCanvas.classList.contains('hidden')) {
-      document.getElementById('student-account-summary').textContent = `${activeStudent.name} · ${activeStudent.className}`;
+  const studentsRef = window.db.ref('toybox_students');
+  studentsRef.once('value').then((snapshot) => {
+    isSyncingFromFirebase = true;
+    let remoteIds;
+    let localOnlyAccounts;
+    try {
+      const remoteData = snapshot.val() || {};
+      const remoteAccounts = Object.entries(remoteData)
+        .filter(([, student]) => student && typeof student === 'object' && !Array.isArray(student))
+        .map(([id, student]) => ({ ...student, id: student.id || id }));
+      remoteIds = new Set(remoteAccounts.map((student) => student.id));
+      localOnlyAccounts = getStudentAccounts().filter((student) => student?.id && !remoteIds.has(student.id));
+    } finally {
+      isSyncingFromFirebase = false;
     }
-  }, (error) => reportDataSyncError('student accounts', error));
+
+    let pendingLocalAccounts = [...localOnlyAccounts];
+    studentsRef.on('value', (studentsSnapshot) => {
+      isSyncingFromFirebase = true;
+      try {
+        const remoteData = studentsSnapshot.val() || {};
+        const remoteAccounts = Object.entries(remoteData)
+          .filter(([, student]) => student && typeof student === 'object' && !Array.isArray(student))
+          .map(([id, student]) => ({ ...student, id: student.id || id }));
+        const remoteIds = new Set(remoteAccounts.map((student) => student.id));
+        pendingLocalAccounts = pendingLocalAccounts.filter((student) => !remoteIds.has(student.id));
+        const accounts = [...remoteAccounts, ...pendingLocalAccounts];
+        persistStudentAccounts(accounts);
+
+        const activeStudent = getActiveStudent();
+        if (activeStudent && !studentCanvas.classList.contains('hidden')) {
+          document.getElementById('student-account-summary').textContent = `${activeStudent.name} · ${activeStudent.className}`;
+        }
+      } finally {
+        isSyncingFromFirebase = false;
+      }
+    }, (error) => reportDataSyncError('student accounts', error));
+
+    localOnlyAccounts.forEach((student) => {
+      syncStudentAccount(student).then((synced) => {
+        if (synced) pendingLocalAccounts = pendingLocalAccounts.filter((item) => item.id !== student.id);
+      });
+    });
+  }).catch((error) => reportDataSyncError('student accounts', error));
 }
 
 async function verifyTeacherPin(value) {
@@ -1006,6 +1048,7 @@ function saveDocuments(documents) {
     reportDocumentSyncError(new Error('Firebase is not available.'));
     return Promise.resolve(false);
   }
+  if (isSyncingFromFirebase) return Promise.resolve(false);
 
   const items = Object.fromEntries(documents.map((item) => [item.id, item]));
   return window.db.ref('toybox_documents').set({ initialized: true, items })
@@ -1026,19 +1069,33 @@ function startDocumentSync() {
   if (documentSyncStarted || !window.db) return;
   documentSyncStarted = true;
 
-  window.db.ref('toybox_documents').on('value', (snapshot) => {
-    const remoteValue = snapshot.val();
-    if (remoteValue === null) {
-      const localDocuments = getDocuments();
-      saveDocuments(localDocuments);
-      return;
+  const documentsRef = window.db.ref('toybox_documents');
+  documentsRef.once('value').then((snapshot) => {
+    isSyncingFromFirebase = true;
+    let shouldMigrateDocuments;
+    try {
+      shouldMigrateDocuments = !snapshot.exists();
+    } finally {
+      isSyncingFromFirebase = false;
     }
 
-    const documents = normalizeDocuments(remoteValue);
-    localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(documents));
-    renderTeacherPdfLibrary();
-    renderStudentPdfLibrary();
-  }, reportDocumentSyncError);
+    documentsRef.on('value', (documentsSnapshot) => {
+      isSyncingFromFirebase = true;
+      try {
+        const remoteValue = documentsSnapshot.val();
+        if (remoteValue === null) return;
+
+        const documents = normalizeDocuments(remoteValue);
+        localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(documents));
+        renderTeacherPdfLibrary();
+        renderStudentPdfLibrary();
+      } finally {
+        isSyncingFromFirebase = false;
+      }
+    }, reportDocumentSyncError);
+
+    if (shouldMigrateDocuments) saveDocuments(getDocuments());
+  }).catch(reportDocumentSyncError);
 }
 
 function renderPdfCards(container, documents, teacherView) {
@@ -1722,33 +1779,70 @@ function getAllStudentSubmissions() {
 }
 
 function syncStudentSubmission(submission) {
-  if (!window.db) return;
-  window.db.ref(`toybox_submissions/${submission.submissionId}`).set(submission)
-    .catch((error) => reportDataSyncError('quiz submissions', error));
+  if (!window.db || isSyncingFromFirebase) return Promise.resolve(false);
+  return window.db.ref(`toybox_submissions/${submission.submissionId}`).set(submission)
+    .then(() => true)
+    .catch((error) => {
+      reportDataSyncError('quiz submissions', error);
+      return false;
+    });
 }
 
 function startSubmissionSync() {
   if (submissionSyncStarted || !window.db) return;
   submissionSyncStarted = true;
 
-  window.db.ref('toybox_submissions').on('value', (snapshot) => {
-    const remoteData = snapshot.val() || {};
-    const remoteSubmissions = Object.entries(remoteData)
-      .filter(([, submission]) => submission && typeof submission === 'object' && !Array.isArray(submission))
-      .map(([id, submission]) => ({ ...submission, submissionId: submission.submissionId || id }));
-    const remoteIds = new Set(remoteSubmissions.map((submission) => submission.submissionId));
-    const localSubmissions = getSavedStudentSubmissions().map((submission) => {
+  const submissionsRef = window.db.ref('toybox_submissions');
+  submissionsRef.once('value').then((snapshot) => {
+    isSyncingFromFirebase = true;
+    let remoteIds;
+    let localSubmissions;
+    try {
+      const remoteData = snapshot.val() || {};
+      remoteIds = new Set(Object.entries(remoteData)
+        .filter(([, submission]) => submission && typeof submission === 'object' && !Array.isArray(submission))
+        .map(([id, submission]) => submission.submissionId || id));
+      localSubmissions = getSavedStudentSubmissions();
+    } finally {
+      isSyncingFromFirebase = false;
+    }
+
+    localSubmissions = localSubmissions.map((submission) => {
       if (submission.submissionId) return submission;
-      const reference = window.db.ref('toybox_submissions').push();
+      const reference = submissionsRef.push();
       return { ...submission, submissionId: reference.key };
     });
-    const localOnlySubmissions = localSubmissions.filter((submission) => !remoteIds.has(submission.submissionId));
+    persistStudentSubmissions(localSubmissions);
+    const localOnlySubmissions = localSubmissions
+      .filter((submission) => !remoteIds.has(submission.submissionId));
 
-    localOnlySubmissions.forEach(syncStudentSubmission);
-    persistStudentSubmissions([...remoteSubmissions, ...localOnlySubmissions]);
-    remoteStudentSubmissions = remoteSubmissions;
-    renderSavedQuizSubmissions();
-  }, (error) => reportDataSyncError('quiz submissions', error));
+    let pendingLocalSubmissions = [...localOnlySubmissions];
+    submissionsRef.on('value', (submissionsSnapshot) => {
+      isSyncingFromFirebase = true;
+      try {
+        const remoteData = submissionsSnapshot.val() || {};
+        const remoteSubmissions = Object.entries(remoteData)
+          .filter(([, submission]) => submission && typeof submission === 'object' && !Array.isArray(submission))
+          .map(([id, submission]) => ({ ...submission, submissionId: submission.submissionId || id }));
+        const remoteIds = new Set(remoteSubmissions.map((submission) => submission.submissionId));
+        pendingLocalSubmissions = pendingLocalSubmissions.filter((submission) => !remoteIds.has(submission.submissionId));
+        persistStudentSubmissions([...remoteSubmissions, ...pendingLocalSubmissions]);
+        remoteStudentSubmissions = remoteSubmissions;
+        renderSavedQuizSubmissions();
+      } finally {
+        isSyncingFromFirebase = false;
+      }
+    }, (error) => reportDataSyncError('quiz submissions', error));
+
+    localOnlySubmissions.forEach((submission) => {
+      syncStudentSubmission(submission).then((synced) => {
+        if (synced) {
+          pendingLocalSubmissions = pendingLocalSubmissions
+            .filter((item) => item.submissionId !== submission.submissionId);
+        }
+      });
+    });
+  }).catch((error) => reportDataSyncError('quiz submissions', error));
 }
 
 function renderSavedQuizSubmissions() {
