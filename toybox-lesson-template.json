@@ -1,0 +1,86 @@
+{
+  "format": "toybox-lesson",
+  "version": 1,
+  "lesson": {
+    "listening": [
+      {
+        "id": 1,
+        "type": "multiple-choice",
+        "prompt": "Listen and choose the animal.",
+        "choices": [
+          "cat",
+          "dog",
+          "bird"
+        ],
+        "answer": "cat",
+        "points": 1,
+        "audio": "https://example.com/listening-audio.mp3"
+      }
+    ],
+    "reading": [
+      {
+        "id": 1,
+        "type": "multiple-choice",
+        "prompt": "Which word means \"mèo\"?",
+        "choices": [
+          "cat",
+          "dog",
+          "bird"
+        ],
+        "answer": "cat",
+        "points": 1
+      },
+      {
+        "id": 2,
+        "type": "fill-blank",
+        "prompt": "The cat is on the ___.",
+        "choices": [
+          "mat",
+          "tree",
+          "chair"
+        ],
+        "answer": "mat",
+        "points": 2
+      },
+      {
+        "id": 3,
+        "type": "matching",
+        "prompt": "Match each animal to its Vietnamese name.",
+        "pairs": [
+          {
+            "left": "cat",
+            "right": "mèo"
+          },
+          {
+            "left": "dog",
+            "right": "chó"
+          }
+        ],
+        "points": 2
+      },
+      {
+        "id": 4,
+        "type": "true-false",
+        "prompt": "A cat is an animal.",
+        "choices": [
+          "True",
+          "False"
+        ],
+        "answer": "True",
+        "points": 1
+      }
+    ],
+    "speaking": [
+      {
+        "id": 1,
+        "prompt": "Say one sentence about your favorite animal."
+      }
+    ],
+    "writing": [
+      {
+        "id": 1,
+        "prompt": "Write three sentences about your favorite animal."
+      }
+    ]
+  }
+}

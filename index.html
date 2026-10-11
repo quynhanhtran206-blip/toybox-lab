@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Vở Nhỏ | Học mỗi ngày</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="noise-overlay"></div>
+
+  <header class="header-controls">
+    <div id="secret-trigger" class="retro-logo" aria-label="Teacher secret gate" title="Vở Nhỏ">
+      <span>📖</span> Vở Nhỏ
+    </div>
+    <div id="student-account-control" class="student-account-control hidden">
+      <span id="student-account-summary"></span>
+      <button id="student-change-password-btn" type="button">Đổi mật khẩu</button>
+      <button id="student-logout-btn" type="button">Đăng xuất</button>
+    </div>
+  </header>
+
+  <main id="student-canvas" class="student-canvas hidden">
+    <section class="desk-banner">
+      <div>
+        <p class="eyebrow">VỞ NHỎ · MỖI NGÀY MỘT CHÚT</p>
+        <h1>Tích tiểu thành đại – hôm nay tích thêm vài điểm mười nhé!</h1>
+      </div>
+      <div class="banner-badges">
+        <span class="badge badge-red">🎧 Listening</span>
+        <span class="badge badge-green">📚 Reading</span>
+        <span class="badge badge-yellow">🎙️ Speaking</span>
+      </div>
+    </section>
+
+    <section class="exam-start-bar" id="exam-start-bar">
+      <div>
+        <strong>Sẵn sàng vào màn chơi?</strong>
+        <span id="active-quiz-name">Bộ câu hỏi hiện tại</span>
+      </div>
+      <button id="start-exam-btn" class="primary-btn" type="button">Bắt đầu làm bài</button>
+      <div id="published-quiz-list" class="published-quiz-list"></div>
+    </section>
+
+    <div class="exam-toolbar hidden" id="exam-toolbar">
+      <div class="exam-status"><span class="exam-status-dot" aria-hidden="true"></span><span id="exam-status">Đang làm bài</span></div>
+      <div class="exam-toolbar-actions">
+        <button id="submit-exam-btn" class="submit-exam-btn" type="button" disabled>Nộp bài</button>
+        <button id="exit-exam-btn" class="exam-exit-btn" type="button" aria-label="Thoát bài làm" title="Thoát bài làm">×</button>
+      </div>
+    </div>
+
+    <div class="skill-tabs" id="student-skill-tabs">
+      <button class="skill-tab active" data-skill="listening" type="button">🎧 Listening</button>
+      <button class="skill-tab" data-skill="reading" type="button">📚 Reading</button>
+      <button class="skill-tab" data-skill="speaking" type="button">🎙️ Speaking</button>
+      <button class="skill-tab" data-skill="writing" type="button">✍️ Writing</button>
+      <button class="skill-tab" data-skill="library" type="button">📘 Thư viện</button>
+    </div>
+
+    <section class="skill-panel active" id="panel-listening">
+      <div class="desk-grid listening-grid">
+        <article class="desk-card listening-quiz-card">
+          <div class="card-topline">🎧 Listening video & questions</div>
+          <div id="student-listening-questions" class="question-stack"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="skill-panel" id="panel-reading">
+      <div class="reading-intro">
+        <div class="reading-intro-copy">
+          <p class="reading-kicker">02 / READING</p>
+          <h2>Đọc một chút, hiểu thêm nhiều.</h2>
+          <p>Chậm một nhịp để tìm manh mối trong từng câu nhé.</p>
+        </div>
+        <div class="reading-stamp" aria-hidden="true">READ<br />&amp;<br />GROW</div>
+      </div>
+      <div id="student-reading-questions" class="question-stack reading-question-grid"></div>
+    </section>
+
+    <section class="skill-panel" id="panel-speaking">
+      <div class="desk-grid">
+        <article class="desk-card mic-card">
+          <div class="card-topline">🎙️ Mini Mic</div>
+          <div class="mic-stand">
+            <div class="mic-body">
+              <div class="mic-head"></div>
+              <div class="mic-neck"></div>
+            </div>
+          </div>
+          <button id="record-btn" class="record-button" type="button">● Record</button>
+          <div class="wave-box" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <div id="recording-playback" class="recording-playback"></div>
+        </article>
+
+        <article class="desk-card speaking-card">
+          <div class="card-topline">🗣️ Speaking Prompt</div>
+          <div id="student-speaking-prompts" class="question-stack"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="skill-panel" id="panel-writing">
+      <div class="desk-grid">
+        <article class="desk-card write-card">
+          <div class="card-topline">✍️ Writing Corner</div>
+          <label for="writing-upload" class="upload-zone" id="upload-zone">
+            <span class="upload-icon">🖼️</span>
+            <span>Upload your handwritten page</span>
+          </label>
+          <input id="writing-upload" type="file" accept="image/*" hidden />
+          <div class="upload-preview hidden" id="upload-preview"></div>
+        </article>
+
+        <article class="desk-card writing-card">
+          <div class="card-topline">📝 Writing Task</div>
+          <div id="student-writing-prompts" class="question-stack"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="skill-panel" id="panel-library">
+      <div class="reading-intro library-intro">
+        <div class="reading-intro-copy">
+          <p class="reading-kicker">05 / THƯ VIỆN</p>
+          <h2>Tài liệu học tập</h2>
+          <p>PDF do giáo viên chia sẻ sẽ xuất hiện ở đây.</p>
+        </div>
+        <div class="reading-stamp" aria-hidden="true">PDF<br />LIB</div>
+      </div>
+      <div id="student-pdf-library" class="student-pdf-library"></div>
+    </section>
+  </main>
+
+  <main id="teacher-dashboard" class="teacher-dashboard hidden">
+    <header class="teacher-header">
+      <div>
+        <p class="eyebrow teacher-eyebrow">Teacher Studio</p>
+        <h2>🧸 Teacher Console</h2>
+      </div>
+      <button id="exit-teacher" class="exit-btn" type="button">Back to student desk</button>
+    </header>
+
+    <div class="teacher-skill-tabs" id="teacher-skill-tabs">
+      <button class="teacher-skill-tab active" data-skill="listening" type="button">🎧 Listening</button>
+      <button class="teacher-skill-tab" data-skill="reading" type="button">📚 Reading</button>
+      <button class="teacher-skill-tab" data-skill="speaking" type="button">🎙️ Speaking</button>
+      <button class="teacher-skill-tab" data-skill="writing" type="button">✍️ Writing</button>
+      <button class="teacher-resource-tab" id="teacher-resource-tab" type="button">📘 Học liệu &amp; kho quiz</button>
+    </div>
+
+    <section id="teacher-layout" class="teacher-layout">
+      <div class="teacher-panel teacher-builder-panel">
+        <h3>Lesson builder</h3>
+
+        <div id="teacher-skill-form"></div>
+
+        <div class="action-row">
+          <button id="save-teacher" class="primary-btn" type="button">Save lesson</button>
+        </div>
+        <div class="lesson-file-tools">
+          <div>
+            <h4>Lesson JSON</h4>
+            <p>Download the example, replace its sample questions, then paste the JSON below or import a file.</p>
+          </div>
+          <div class="action-row">
+            <button id="download-template" class="secondary-btn" type="button">Download JSON example</button>
+            <button id="export-json" class="secondary-btn" type="button">Export lesson</button>
+            <label class="file-import secondary-btn" for="import-json">Import JSON</label>
+            <input id="import-json" type="file" accept="application/json,.json" hidden />
+          </div>
+        </div>
+        <div class="json-paste-tools">
+          <label for="teacher-json-input">Paste lesson JSON</label>
+          <textarea id="teacher-json-input" rows="8" spellcheck="false" placeholder="Paste the complete JSON object here..."></textarea>
+          <button id="import-pasted-json" class="secondary-btn" type="button">Import pasted JSON</button>
+        </div>
+        <p id="teacher-status" class="teacher-status">Lesson saved locally. Firebase syncs when connected.</p>
+      </div>
+
+      <div class="teacher-panel">
+        <h3>Quiz submissions</h3>
+        <div id="saved-quiz-submissions" class="saved-quiz-submissions"></div>
+      </div>
+    </section>
+
+    <section id="teacher-resources-view" class="teacher-resources-view hidden">
+    <div class="teacher-resource-subtabs" role="tablist" aria-label="Quản lý học liệu">
+      <button class="teacher-resource-subtab" data-resource="accounts" type="button">Tài khoản</button>
+      <button class="teacher-resource-subtab active" data-resource="pdfs" type="button">Tài liệu PDF</button>
+      <button class="teacher-resource-subtab" data-resource="quizzes" type="button">Kho quiz</button>
+    </div>
+    <section id="resource-accounts" class="teacher-panel student-accounts-panel hidden">
+      <div class="student-accounts-heading">
+        <div>
+          <h3>Tài khoản học sinh</h3>
+          <p>Thông tin tài khoản lưu trên trình duyệt này. Mật khẩu được mã hóa và không thể xem lại.</p>
+        </div>
+        <span id="student-account-count" class="student-account-count">0 tài khoản</span>
+      </div>
+      <div id="student-accounts-list" class="student-accounts-list"></div>
+      <div id="student-account-admin-status" class="teacher-status" role="status"></div>
+      <form id="teacher-pin-form" class="teacher-pin-form">
+        <h4>Đổi mã giáo viên</h4>
+        <div class="teacher-pin-fields">
+          <label>Mã hiện tại<input id="teacher-current-pin" type="password" inputmode="numeric" autocomplete="current-password" required /></label>
+          <label>Mã mới<input id="teacher-new-pin" type="password" inputmode="numeric" minlength="4" maxlength="6" pattern="[0-9]{4,6}" autocomplete="new-password" required /></label>
+          <label>Nhập lại mã mới<input id="teacher-repeat-pin" type="password" inputmode="numeric" minlength="4" maxlength="6" pattern="[0-9]{4,6}" autocomplete="new-password" required /></label>
+          <label>Mã khôi phục riêng (không bắt buộc)<input id="teacher-new-recovery-code" type="password" inputmode="numeric" minlength="4" maxlength="12" pattern="[0-9]{4,12}" autocomplete="new-password" /></label>
+          <button class="secondary-btn" type="submit">Cập nhật mã</button>
+        </div>
+        <p id="teacher-pin-status" class="teacher-status" role="status"></p>
+      </form>
+    </section>
+    <section id="resource-pdfs" class="teacher-panel teacher-library-panel">
+      <div class="teacher-content-heading">
+        <div>
+          <h3>Thư viện PDF học tập</h3>
+          <p>Tài liệu lưu trên trình duyệt này và được chia sẻ khi giáo viên bật quyền xem.</p>
+        </div>
+        <label class="pdf-upload-btn" for="teacher-pdf-upload">＋ Tải PDF lên</label>
+        <input id="teacher-pdf-upload" type="file" accept="application/pdf,.pdf" hidden />
+      </div>
+      <div id="teacher-pdf-library" class="teacher-pdf-library"></div>
+      <p id="teacher-pdf-status" class="teacher-status" role="status"></p>
+    </section>
+
+    <section id="resource-quizzes" class="teacher-panel quiz-archive-panel hidden">
+      <div class="teacher-content-heading">
+        <div>
+          <h3>Kho quiz lưu trữ</h3>
+          <p>Tạo thư mục, lưu quiz cũ rồi kéo giữa các thư mục. Chỉ quiz được mở quyền mới hiện với học sinh.</p>
+        </div>
+      </div>
+      <form id="quiz-folder-form" class="quiz-folder-form">
+        <label>Tên thư mục<input id="quiz-folder-name" type="text" required placeholder="Ví dụ: Hiện tại đơn" /></label>
+        <button class="secondary-btn" type="submit">＋ Tạo thư mục</button>
+      </form>
+      <form id="archive-quiz-form" class="archive-quiz-form">
+        <label>Tên quiz<input id="archive-quiz-name" type="text" required placeholder="Ví dụ: Ôn tập câu khẳng định" /></label>
+        <label>Lưu vào<select id="archive-quiz-folder" required></select></label>
+        <button class="primary-btn" type="submit">Lưu quiz hiện tại</button>
+      </form>
+      <div id="quiz-archive-folders" class="quiz-archive-folders"></div>
+      <p id="quiz-archive-status" class="teacher-status" role="status"></p>
+    </section>
+    </section>
+  </main>
+
+  <div id="account-modal" class="account-modal" role="dialog" aria-modal="true" aria-labelledby="account-title">
+    <section class="account-dialog">
+      <header class="account-brand-panel">
+        <span class="account-brand-mark">📖 VỞ NHỎ</span>
+        <p class="account-brand-caption">TÍCH TIỂU THÀNH ĐẠI</p>
+        <h1 id="account-title">Mỗi ngày thêm một điều hay.</h1>
+        <p>Đăng nhập để tiếp tục hành trình học tập của em.</p>
+        <span class="account-brand-number" aria-hidden="true">01</span>
+      </header>
+      <div class="account-form-panel">
+        <div class="account-mode-tabs" role="tablist" aria-label="Tài khoản học sinh">
+          <button id="account-register-tab" class="account-mode-tab active" type="button" role="tab" aria-selected="true">Tạo tài khoản</button>
+          <button id="account-login-tab" class="account-mode-tab" type="button" role="tab" aria-selected="false">Đăng nhập</button>
+        </div>
+        <p id="account-form-heading" class="account-form-heading">Bắt đầu bằng vài thông tin của em.</p>
+        <form id="student-auth-form" novalidate>
+          <label>Họ và tên<input id="account-name" type="text" autocomplete="name" required placeholder="Ví dụ: Nguyễn Minh An" /></label>
+          <div class="account-field-row">
+            <label>Lớp<input id="account-class" type="text" required placeholder="Ví dụ: 5A" /></label>
+            <label>Trường<input id="account-school" type="text" required placeholder="Tên trường của em" /></label>
+          </div>
+          <label>Mật khẩu<input id="account-password" type="password" autocomplete="new-password" minlength="6" required placeholder="Ít nhất 6 ký tự" /></label>
+          <label id="account-confirm-group">Nhập lại mật khẩu<input id="account-confirm-password" type="password" autocomplete="new-password" minlength="6" required placeholder="Nhập lại mật khẩu" /></label>
+          <button id="account-submit-btn" class="account-submit-btn" type="submit">Tạo tài khoản</button>
+        </form>
+        <p id="account-form-status" class="account-form-status" role="status" aria-live="polite"></p>
+        <button id="teacher-login-link" class="teacher-login-link" type="button">Giáo viên? Mở Teacher Studio</button>
+        <p class="account-local-note">Tài khoản hiện chỉ dùng được trên trình duyệt này, chưa đồng bộ sang thiết bị khác.</p>
+      </div>
+    </section>
+  </div>
+
+  <div id="passcode-modal" class="passcode-modal hidden" role="dialog" aria-modal="true" aria-labelledby="lock-title">
+    <div class="lock-box">
+      <div class="mascot-box" id="mascot-box">
+        <div id="mascot-avatar" class="mascot-avatar">🐻</div>
+        <div class="mascot-copy">
+          <h3 id="lock-title">🔒 Teacher Gate</h3>
+          <p id="mascot-message">Enter the secret code to open the teacher studio.</p>
+        </div>
+      </div>
+
+      <label class="passcode-label" for="passcode-input">Mật khẩu / mã giáo viên</label>
+      <input id="passcode-input" type="password" inputmode="numeric" maxlength="12" placeholder="Nhập mã giáo viên" />
+      <button id="unlock-btn" class="primary-btn" type="button">Mở Teacher Studio</button>
+      <button id="teacher-forgot-password" class="teacher-forgot-password" type="button">Quên mật khẩu?</button>
+      <button id="teacher-gate-cancel" class="secondary-btn" type="button">Quay lại</button>
+      <p id="error-msg" class="error-msg hidden">Hint: The code is hidden in the toybox timeline.</p>
+      <div id="star-badge" class="star-badge hidden">⭐</div>
+    </div>
+  </div>
+
+  <div id="teacher-recovery-modal" class="teacher-recovery-modal hidden" role="dialog" aria-modal="true" aria-labelledby="teacher-recovery-title">
+    <section class="teacher-recovery-dialog">
+      <div class="recovery-pixel-mark" aria-hidden="true">?</div>
+      <h2 id="teacher-recovery-title">Khôi phục Teacher Portal</h2>
+      <p class="teacher-recovery-intro">Nhập mã khôi phục để đặt mật khẩu giáo viên mới.</p>
+      <form id="teacher-recovery-code-form">
+        <label>Mã khôi phục<input id="teacher-recovery-code" type="password" inputmode="numeric" maxlength="12" autocomplete="one-time-code" placeholder="Nhập mã khôi phục" required /></label>
+        <button class="primary-btn" type="submit">Xác thực mã</button>
+        <p id="teacher-recovery-code-status" class="teacher-recovery-status" role="alert"></p>
+      </form>
+      <form id="teacher-recovery-reset-form" class="hidden">
+        <label>Mật khẩu mới (4–6 chữ số)<input id="teacher-recovery-new-pin" type="password" inputmode="numeric" minlength="4" maxlength="6" pattern="[0-9]{4,6}" autocomplete="new-password" required /></label>
+        <label>Xác nhận mật khẩu mới<input id="teacher-recovery-confirm-pin" type="password" inputmode="numeric" minlength="4" maxlength="6" pattern="[0-9]{4,6}" autocomplete="new-password" required /></label>
+        <button class="primary-btn" type="submit">Lưu mật khẩu mới</button>
+        <p id="teacher-recovery-reset-status" class="teacher-recovery-status" role="status"></p>
+      </form>
+      <button id="teacher-recovery-cancel" class="secondary-btn" type="button">Quay lại đăng nhập</button>
+    </section>
+  </div>
+
+  <div id="password-change-modal" class="password-change-modal hidden" role="dialog" aria-modal="true" aria-labelledby="password-change-title">
+    <form id="password-change-form" class="password-change-dialog">
+      <h2 id="password-change-title">Đổi mật khẩu</h2>
+      <p>Mật khẩu mới chỉ mình em biết.</p>
+      <label>Mật khẩu hiện tại<input id="current-password" type="password" autocomplete="current-password" required /></label>
+      <label>Mật khẩu mới<input id="new-password" type="password" autocomplete="new-password" minlength="6" required /></label>
+      <label>Nhập lại mật khẩu mới<input id="repeat-new-password" type="password" autocomplete="new-password" minlength="6" required /></label>
+      <div class="password-change-actions">
+        <button class="primary-btn" type="submit">Lưu mật khẩu</button>
+        <button id="cancel-password-change" class="secondary-btn" type="button">Hủy</button>
+      </div>
+      <p id="password-change-status" class="account-form-status" role="status"></p>
+    </form>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyA3MX_26gVfHBLEISb3JYgNdEl30ERU3sI",
+      authDomain: "vonho-61b8e.firebaseapp.com",
+      databaseURL: "https://vonho-61b8e-default-rtdb.asia-southeast1.firebasedatabase.app/",
+      projectId: "vonho-61b8e",
+      storageBucket: "vonho-61b8e.firebasestorage.app",
+      messagingSenderId: "594718833788",
+      appId: "1:594718833788:web:2cf4885a2b43d6e6c99df9",
+      measurementId: "G-6WVPN72JTC"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    window.db = firebase.database();
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>
