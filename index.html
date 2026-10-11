@@ -221,11 +221,18 @@
       <div class="teacher-content-heading">
         <div>
           <h3>Thư viện PDF học tập</h3>
-          <p>Tài liệu lưu trên trình duyệt này và được chia sẻ khi giáo viên bật quyền xem.</p>
+          <p>Thêm liên kết Google Drive hoặc PDF online để học sinh mở trên mọi thiết bị.</p>
         </div>
-        <label class="pdf-upload-btn" for="teacher-pdf-upload">＋ Tải PDF lên</label>
-        <input id="teacher-pdf-upload" type="file" accept="application/pdf,.pdf" hidden />
       </div>
+      <form id="teacher-document-form" class="teacher-document-form">
+        <label>Tên tài liệu / Tên bài đọc
+          <input id="teacher-document-name" type="text" required maxlength="160" placeholder="Ví dụ: Bài đọc - Unit 1" />
+        </label>
+        <label>Đường link Google Drive (hoặc link PDF online)
+          <input id="teacher-document-url" type="url" required placeholder="https://drive.google.com/..." />
+        </label>
+        <button class="primary-btn" type="submit">＋ Lưu tài liệu</button>
+      </form>
       <div id="teacher-pdf-library" class="teacher-pdf-library"></div>
       <p id="teacher-pdf-status" class="teacher-status" role="status"></p>
     </section>

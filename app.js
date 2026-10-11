@@ -4,7 +4,7 @@ const ACCOUNTS_KEY = 'vo-nho-student-accounts';
 const SESSION_KEY = 'vo-nho-active-student';
 const QUIZ_ARCHIVE_KEY = 'vo-nho-quiz-archive';
 const ACTIVE_PRACTICE_KEY = 'vo-nho-active-practice-quiz';
-const PDF_DATABASE_NAME = 'vo-nho-learning-library';
+const DOCUMENTS_KEY = 'vo-nho-pdf-metadata';
 const TEACHER_PIN_KEY = 'vo-nho-teacher-pin';
 const TEACHER_RECOVERY_KEY = 'vo-nho-teacher-recovery-code';
 const DEFAULT_TEACHER_PIN = '20022006';
@@ -70,9 +70,8 @@ let examStarted = false;
 let examExitAttempts = 0;
 let examWasHidden = false;
 let activeArchiveFolderId = '';
-let pdfDatabasePromise = null;
-let pdfObjectUrls = [];
 let lessonSyncStarted = false;
+let documentSyncStarted = false;
 
 function getQuizArchive() {
   try {
@@ -916,32 +915,66 @@ function renderStudentSkills() {
   updateScorePanel();
 }
 
-function openPdfDatabase() {
-  if (!('indexedDB' in window)) return Promise.reject(new Error('Trình duyệt không hỗ trợ lưu PDF.'));
-  if (!pdfDatabasePromise) {
-    pdfDatabasePromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(PDF_DATABASE_NAME, 1);
-      request.onupgradeneeded = () => {
-        if (!request.result.objectStoreNames.contains('pdfs')) request.result.createObjectStore('pdfs', { keyPath: 'id' });
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-  return pdfDatabasePromise;
-}
-
-function getPdfMetadata() {
+function getDocuments() {
   try {
-    const metadata = JSON.parse(localStorage.getItem('vo-nho-pdf-metadata') || '[]');
-    return Array.isArray(metadata) ? metadata : [];
+    const documents = JSON.parse(localStorage.getItem(DOCUMENTS_KEY) || '[]');
+    return Array.isArray(documents)
+      ? documents.filter((item) => item && item.id && item.name && isValidDocumentUrl(item.url))
+      : [];
   } catch (error) {
     return [];
   }
 }
 
-function savePdfMetadata(metadata) {
-  localStorage.setItem('vo-nho-pdf-metadata', JSON.stringify(metadata));
+function normalizeDocuments(value) {
+  const isDocument = (item) => item && typeof item === 'object'
+    && item.id && item.name && typeof item.url === 'string' && isValidDocumentUrl(item.url);
+  if (value && typeof value === 'object' && !Array.isArray(value) && value.items && typeof value.items === 'object') {
+    return Object.values(value.items).filter(isDocument);
+  }
+  const documents = Array.isArray(value) ? value : value && typeof value === 'object' ? Object.values(value) : [];
+  return documents.filter(isDocument);
+}
+
+function saveDocuments(documents) {
+  localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(documents));
+  if (!window.db) {
+    reportDocumentSyncError(new Error('Firebase is not available.'));
+    return Promise.resolve(false);
+  }
+
+  const items = Object.fromEntries(documents.map((item) => [item.id, item]));
+  return window.db.ref('toybox_documents').set({ initialized: true, items })
+    .then(() => true)
+    .catch((error) => {
+      reportDocumentSyncError(error);
+      return false;
+    });
+}
+
+function reportDocumentSyncError(error) {
+  console.error('Firebase document sync failed:', error);
+  const status = document.getElementById('teacher-pdf-status');
+  if (status) status.textContent = 'Đã lưu bản dự phòng trên thiết bị, nhưng chưa đồng bộ được Firebase. Hãy kiểm tra kết nối và quyền database.';
+}
+
+function startDocumentSync() {
+  if (documentSyncStarted || !window.db) return;
+  documentSyncStarted = true;
+
+  window.db.ref('toybox_documents').on('value', (snapshot) => {
+    const remoteValue = snapshot.val();
+    if (remoteValue === null) {
+      const localDocuments = getDocuments();
+      saveDocuments(localDocuments);
+      return;
+    }
+
+    const documents = normalizeDocuments(remoteValue);
+    localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(documents));
+    renderTeacherPdfLibrary();
+    renderStudentPdfLibrary();
+  }, reportDocumentSyncError);
 }
 
 function renderPdfCards(container, documents, teacherView) {
@@ -950,7 +983,7 @@ function renderPdfCards(container, documents, teacherView) {
   if (!documents.length) {
     const empty = document.createElement('p');
     empty.className = 'empty-account-list';
-    empty.textContent = teacherView ? 'Chưa có PDF. Tải tài liệu đầu tiên lên nhé.' : 'Chưa có tài liệu được chia sẻ.';
+    empty.textContent = teacherView ? 'Chưa có tài liệu. Thêm liên kết đầu tiên nhé.' : 'Chưa có tài liệu được chia sẻ.';
     container.appendChild(empty);
     return;
   }
@@ -960,49 +993,31 @@ function renderPdfCards(container, documents, teacherView) {
     card.className = 'pdf-library-card';
     const icon = document.createElement('span');
     icon.className = 'pdf-file-icon';
-    icon.textContent = 'PDF';
+    icon.textContent = 'DOC';
     const detail = document.createElement('div');
     detail.className = 'pdf-library-detail';
     const title = document.createElement('strong');
     title.textContent = documentInfo.name;
-    const subtitle = document.createElement('span');
-    const sizeKb = Math.max(1, Math.round(documentInfo.size / 1024));
-    subtitle.textContent = `${sizeKb} KB · ${documentInfo.shared ? 'Đang chia sẻ' : 'Riêng tư'}`;
-    detail.append(title, subtitle);
+    detail.append(title);
     card.append(icon, detail);
 
     if (teacherView) {
       const controls = document.createElement('div');
       controls.className = 'pdf-library-actions';
-      const accessLabel = document.createElement('label');
-      accessLabel.className = 'library-access-toggle';
-      const access = document.createElement('input');
-      access.type = 'checkbox';
-      access.checked = Boolean(documentInfo.shared);
-      access.setAttribute('aria-label', `Chia sẻ ${documentInfo.name} với học sinh`);
-      access.addEventListener('change', () => {
-        const metadata = getPdfMetadata();
-        const target = metadata.find((item) => item.id === documentInfo.id);
-        if (!target) return;
-        target.shared = access.checked;
-        savePdfMetadata(metadata);
-        renderTeacherPdfLibrary();
-        renderStudentPdfLibrary();
-      });
-      accessLabel.append(access, document.createTextNode('Mở quyền'));
       const deleteButton = document.createElement('button');
       deleteButton.type = 'button';
       deleteButton.className = 'account-delete-btn';
       deleteButton.textContent = 'Xóa';
-      deleteButton.addEventListener('click', () => deletePdfDocument(documentInfo.id));
-      controls.append(accessLabel, deleteButton);
+      deleteButton.addEventListener('click', () => deleteDocument(documentInfo.id));
+      controls.append(deleteButton);
       card.appendChild(controls);
     } else {
-      const openButton = document.createElement('button');
-      openButton.type = 'button';
-      openButton.className = 'secondary-btn';
-      openButton.textContent = 'Mở PDF';
-      openButton.addEventListener('click', () => openPdfDocument(documentInfo.id));
+      const openButton = document.createElement('a');
+      openButton.className = 'secondary-btn pdf-open-link';
+      openButton.href = documentInfo.url;
+      openButton.target = '_blank';
+      openButton.rel = 'noopener noreferrer';
+      openButton.textContent = /\.pdf(?:[?#]|$)/i.test(documentInfo.url) ? 'Xem PDF' : 'Mở tài liệu';
       card.appendChild(openButton);
     }
     container.appendChild(card);
@@ -1010,66 +1025,58 @@ function renderPdfCards(container, documents, teacherView) {
 }
 
 function renderTeacherPdfLibrary() {
-  renderPdfCards(document.getElementById('teacher-pdf-library'), getPdfMetadata(), true);
+  renderPdfCards(document.getElementById('teacher-pdf-library'), getDocuments(), true);
 }
 
 function renderStudentPdfLibrary() {
-  renderPdfCards(document.getElementById('student-pdf-library'), getPdfMetadata().filter((item) => item.shared), false);
+  renderPdfCards(document.getElementById('student-pdf-library'), getDocuments(), false);
 }
 
-async function saveUploadedPdf(file) {
+function isValidDocumentUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch (error) {
+    return false;
+  }
+}
+
+async function addDocument(event) {
+  event.preventDefault();
   const status = document.getElementById('teacher-pdf-status');
-  if (!file || file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-    status.textContent = 'Hãy chọn một file PDF.';
+  const nameInput = document.getElementById('teacher-document-name');
+  const urlInput = document.getElementById('teacher-document-url');
+  const name = nameInput.value.trim();
+  const url = urlInput.value.trim();
+  if (!name || !url) {
+    status.textContent = 'Nhập tên tài liệu và đường link trước nhé.';
     return;
   }
-  try {
-    const database = await openPdfDatabase();
-    const documentInfo = { id: window.crypto.randomUUID(), name: file.name, size: file.size, shared: false, addedAt: new Date().toISOString() };
-    await new Promise((resolve, reject) => {
-      const transaction = database.transaction('pdfs', 'readwrite');
-      transaction.objectStore('pdfs').put({ ...documentInfo, file });
-      transaction.oncomplete = resolve;
-      transaction.onerror = () => reject(transaction.error);
-    });
-    const metadata = getPdfMetadata();
-    metadata.push(documentInfo);
-    savePdfMetadata(metadata);
-    renderTeacherPdfLibrary();
-    status.textContent = `Đã tải ${file.name}. Bật Mở quyền để học sinh xem.`;
-  } catch (error) {
-    status.textContent = error.message || 'Chưa lưu được PDF trong trình duyệt.';
+  if (!isValidDocumentUrl(url)) {
+    status.textContent = 'Đường link cần bắt đầu bằng http:// hoặc https://.';
+    return;
   }
-}
 
-async function openPdfDocument(documentId) {
-  try {
-    const database = await openPdfDatabase();
-    const record = await new Promise((resolve, reject) => {
-      const request = database.transaction('pdfs', 'readonly').objectStore('pdfs').get(documentId);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    if (!record?.file) throw new Error('Không tìm thấy file PDF trong trình duyệt này.');
-    const url = URL.createObjectURL(record.file);
-    pdfObjectUrls.push(url);
-    window.open(url, '_blank', 'noopener');
-  } catch (error) {
-    window.alert(error.message);
-  }
-}
-
-async function deletePdfDocument(documentId) {
-  const database = await openPdfDatabase();
-  await new Promise((resolve, reject) => {
-    const transaction = database.transaction('pdfs', 'readwrite');
-    transaction.objectStore('pdfs').delete(documentId);
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-  savePdfMetadata(getPdfMetadata().filter((item) => item.id !== documentId));
+  const documents = getDocuments();
+  const id = window.crypto.randomUUID
+    ? window.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  documents.push({ id, name, url, addedAt: new Date().toISOString() });
+  localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(documents));
   renderTeacherPdfLibrary();
   renderStudentPdfLibrary();
+  const synced = await saveDocuments(documents);
+  if (synced) status.textContent = `Đã lưu tài liệu "${name}" và đồng bộ lên Firebase.`;
+  document.getElementById('teacher-document-form').reset();
+}
+
+async function deleteDocument(documentId) {
+  const documents = getDocuments().filter((item) => item.id !== documentId);
+  localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(documents));
+  renderTeacherPdfLibrary();
+  renderStudentPdfLibrary();
+  const synced = await saveDocuments(documents);
+  if (synced) document.getElementById('teacher-pdf-status').textContent = 'Đã xóa tài liệu và đồng bộ lên Firebase.';
 }
 
 function renderPublishedQuizzes() {
@@ -2229,10 +2236,7 @@ function bindEvents() {
       status.textContent = error.message;
     }
   });
-  document.getElementById('teacher-pdf-upload').addEventListener('change', async (event) => {
-    await saveUploadedPdf(event.target.files[0]);
-    event.target.value = '';
-  });
+  document.getElementById('teacher-document-form').addEventListener('submit', addDocument);
   document.getElementById('cancel-password-change').addEventListener('click', () => {
     document.getElementById('password-change-modal').classList.add('hidden');
   });
@@ -2292,6 +2296,7 @@ function bindEvents() {
   if (activeStudent) showStudentDesk(activeStudent);
   else showAccountGate(getStudentAccounts().length ? 'login' : 'register');
   startLessonSync();
+  startDocumentSync();
 }
 
 window.__toyboxScore = {};

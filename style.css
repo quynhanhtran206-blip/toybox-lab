@@ -2561,17 +2561,40 @@ body {
   line-height: 1.5;
 }
 
-.pdf-upload-btn {
-  display: inline-flex;
-  flex: 0 0 auto;
-  min-height: 42px;
-  align-items: center;
-  padding: 8px 13px;
-  border: 2px solid var(--ink);
-  background: #ffe07b;
-  box-shadow: 3px 3px 0 var(--ink);
-  cursor: pointer;
+.teacher-document-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 2px dashed rgba(43, 45, 66, 0.35);
+  background: #fffbea;
+}
+
+.teacher-document-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  color: var(--ink-soft);
   font-weight: 900;
+}
+
+.teacher-document-form input {
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 11px;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  background: #fff;
+}
+
+.teacher-document-form .primary-btn {
+  min-height: 44px;
+  border-radius: 0;
+  box-shadow: 3px 3px 0 var(--ink);
+  white-space: nowrap;
 }
 
 .teacher-pdf-library,
@@ -2650,6 +2673,20 @@ body {
   background: #f1f2ce;
   cursor: pointer;
   font-weight: 900;
+}
+
+.pdf-library-card > .pdf-open-link {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  text-align: center;
+  text-decoration: none;
+}
+
+.pdf-library-card > .pdf-open-link:hover {
+  background: #ffe07b;
 }
 
 .quiz-folder-form {
@@ -2804,7 +2841,8 @@ body {
   .teacher-pdf-library,
   .student-pdf-library,
   .teacher-pin-fields,
-  .archive-quiz-form {
+  .archive-quiz-form,
+  .teacher-document-form {
     grid-template-columns: 1fr;
   }
 
@@ -2907,7 +2945,7 @@ summary,
 
 button,
 .file-import,
-.pdf-upload-btn,
+.pdf-open-link,
 .question-action-btn,
 .teacher-resource-subtab,
 .account-mode-tab {
@@ -2924,7 +2962,7 @@ button,
 
 button:not(:disabled):hover,
 .file-import:hover,
-.pdf-upload-btn:hover {
+.pdf-open-link:hover {
   transform: translate(2px, 2px);
   box-shadow: 2px 2px 0 #2f3542;
   filter: brightness(1.03);
@@ -2932,7 +2970,7 @@ button:not(:disabled):hover,
 
 button:not(:disabled):active,
 .file-import:active,
-.pdf-upload-btn:active {
+.pdf-open-link:active {
   transform: translate(4px, 4px);
   box-shadow: 0 0 0 #2f3542;
 }
@@ -2958,8 +2996,7 @@ button:disabled {
 
 .secondary-btn,
 .exit-btn,
-.file-import,
-.pdf-upload-btn {
+.file-import {
   border: 3px solid #2f3542;
   border-radius: 4px;
   background: #48dbfb;
