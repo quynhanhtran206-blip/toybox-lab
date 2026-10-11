@@ -72,6 +72,10 @@ let examWasHidden = false;
 let activeArchiveFolderId = '';
 let lessonSyncStarted = false;
 let documentSyncStarted = false;
+let studentAccountSyncStarted = false;
+let studentAccountsInitialSyncComplete = false;
+let submissionSyncStarted = false;
+let remoteStudentSubmissions = null;
 
 function getQuizArchive() {
   try {
@@ -173,6 +177,56 @@ function getStudentAccounts() {
   } catch (error) {
     return [];
   }
+}
+
+function reportDataSyncError(dataType, error) {
+  console.error(`Firebase ${dataType} sync failed:`, error);
+  const message = `Firebase sync failed for ${dataType}. Data remains saved locally when possible.`;
+  if (teacherStatus) teacherStatus.textContent = message;
+  const adminStatus = document.getElementById('student-account-admin-status');
+  if (adminStatus) adminStatus.textContent = message;
+}
+
+function persistStudentAccounts(accounts) {
+  try {
+    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+  } catch (error) {
+    console.error('Could not save student accounts to localStorage:', error);
+  }
+  renderStudentAccounts();
+}
+
+function syncStudentAccount(student) {
+  if (!window.db) return;
+  window.db.ref(`toybox_students/${student.id}`).set(student)
+    .catch((error) => reportDataSyncError('student accounts', error));
+}
+
+function startStudentAccountSync() {
+  if (studentAccountSyncStarted || !window.db) return;
+  studentAccountSyncStarted = true;
+
+  window.db.ref('toybox_students').on('value', (snapshot) => {
+    const remoteData = snapshot.val() || {};
+    const remoteAccounts = Object.entries(remoteData)
+      .filter(([, student]) => student && typeof student === 'object' && !Array.isArray(student))
+      .map(([id, student]) => ({ ...student, id: student.id || id }));
+    const remoteIds = new Set(remoteAccounts.map((student) => student.id));
+    const localAccounts = getStudentAccounts();
+    const localOnlyAccounts = studentAccountsInitialSyncComplete
+      ? []
+      : localAccounts.filter((student) => student?.id && !remoteIds.has(student.id));
+
+    localOnlyAccounts.forEach(syncStudentAccount);
+    const accounts = [...remoteAccounts, ...localOnlyAccounts];
+    persistStudentAccounts(accounts);
+    studentAccountsInitialSyncComplete = true;
+
+    const activeStudent = getActiveStudent();
+    if (activeStudent && !studentCanvas.classList.contains('hidden')) {
+      document.getElementById('student-account-summary').textContent = `${activeStudent.name} · ${activeStudent.className}`;
+    }
+  }, (error) => reportDataSyncError('student accounts', error));
 }
 
 async function verifyTeacherPin(value) {
@@ -420,7 +474,8 @@ async function handleStudentAuth(event) {
         passwordHash: credential.hash,
         createdAt: new Date().toISOString()
       };
-      localStorage.setItem(ACCOUNTS_KEY, JSON.stringify([...accounts, student]));
+      persistStudentAccounts([...accounts, student]);
+      syncStudentAccount(student);
       sessionStorage.setItem(SESSION_KEY, student.id);
       studentAuthForm.reset();
       showStudentDesk(student);
@@ -501,7 +556,9 @@ async function resetStudentPassword(studentId) {
     const credential = await hashStudentPassword(temporaryPassword);
     student.salt = credential.salt;
     student.passwordHash = credential.hash;
-    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+    student.updatedAt = new Date().toISOString();
+    persistStudentAccounts(accounts);
+    syncStudentAccount(student);
     const status = document.getElementById('student-account-admin-status');
     const notice = document.createElement('div');
     notice.className = 'temporary-password-notice';
@@ -554,7 +611,11 @@ async function resetStudentPassword(studentId) {
 function deleteStudentAccount(studentId) {
   const student = getStudentAccounts().find((item) => item.id === studentId);
   if (!student || !window.confirm(`Xóa tài khoản của ${student.name}? Bài nộp cũ vẫn được giữ để theo dõi.`)) return;
-  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(getStudentAccounts().filter((item) => item.id !== studentId)));
+  persistStudentAccounts(getStudentAccounts().filter((item) => item.id !== studentId));
+  if (window.db) {
+    window.db.ref(`toybox_students/${studentId}`).remove()
+      .catch((error) => reportDataSyncError('student accounts', error));
+  }
   if (sessionStorage.getItem(SESSION_KEY) === studentId) sessionStorage.removeItem(SESSION_KEY);
   document.getElementById('student-account-admin-status').textContent = `Đã xóa tài khoản ${student.name}.`;
   renderStudentAccounts();
@@ -590,9 +651,12 @@ async function handlePasswordChange(event) {
     const nextCredential = await hashStudentPassword(newPassword);
     const accounts = getStudentAccounts();
     const account = accounts.find((item) => item.id === student.id);
+    if (!account) throw new Error('Không tìm thấy tài khoản học sinh cần cập nhật.');
     account.salt = nextCredential.salt;
     account.passwordHash = nextCredential.hash;
-    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+    account.updatedAt = new Date().toISOString();
+    persistStudentAccounts(accounts);
+    syncStudentAccount(account);
     document.getElementById('password-change-form').reset();
     status.textContent = 'Đã đổi mật khẩu.';
   } catch (error) {
@@ -1635,12 +1699,64 @@ function getSavedStudentSubmissions() {
   }
 }
 
+function persistStudentSubmissions(submissions) {
+  try {
+    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(submissions.slice(-20)));
+  } catch (error) {
+    console.error('Could not save student submissions to localStorage:', error);
+  }
+}
+
+function getAllStudentSubmissions() {
+  const submissions = new Map();
+  getSavedStudentSubmissions().forEach((submission, index) => {
+    const id = submission.submissionId || `legacy-${submission.submittedAt || index}-${index}`;
+    submissions.set(id, { ...submission, submissionId: submission.submissionId || id });
+  });
+  (remoteStudentSubmissions || []).forEach((submission) => {
+    if (submission.submissionId) submissions.set(submission.submissionId, submission);
+  });
+  return [...submissions.values()].sort((first, second) => (
+    new Date(first.submittedAt).getTime() - new Date(second.submittedAt).getTime()
+  ));
+}
+
+function syncStudentSubmission(submission) {
+  if (!window.db) return;
+  window.db.ref(`toybox_submissions/${submission.submissionId}`).set(submission)
+    .catch((error) => reportDataSyncError('quiz submissions', error));
+}
+
+function startSubmissionSync() {
+  if (submissionSyncStarted || !window.db) return;
+  submissionSyncStarted = true;
+
+  window.db.ref('toybox_submissions').on('value', (snapshot) => {
+    const remoteData = snapshot.val() || {};
+    const remoteSubmissions = Object.entries(remoteData)
+      .filter(([, submission]) => submission && typeof submission === 'object' && !Array.isArray(submission))
+      .map(([id, submission]) => ({ ...submission, submissionId: submission.submissionId || id }));
+    const remoteIds = new Set(remoteSubmissions.map((submission) => submission.submissionId));
+    const localSubmissions = getSavedStudentSubmissions().map((submission) => {
+      if (submission.submissionId) return submission;
+      const reference = window.db.ref('toybox_submissions').push();
+      return { ...submission, submissionId: reference.key };
+    });
+    const localOnlySubmissions = localSubmissions.filter((submission) => !remoteIds.has(submission.submissionId));
+
+    localOnlySubmissions.forEach(syncStudentSubmission);
+    persistStudentSubmissions([...remoteSubmissions, ...localOnlySubmissions]);
+    remoteStudentSubmissions = remoteSubmissions;
+    renderSavedQuizSubmissions();
+  }, (error) => reportDataSyncError('quiz submissions', error));
+}
+
 function renderSavedQuizSubmissions() {
   const container = document.getElementById('saved-quiz-submissions');
   if (!container) return;
   container.replaceChildren();
 
-  getSavedStudentSubmissions().slice().reverse().forEach((submission) => {
+  getAllStudentSubmissions().slice().reverse().forEach((submission) => {
     const card = document.createElement('article');
     card.className = 'saved-quiz-submission';
     const header = document.createElement('div');
@@ -1686,13 +1802,18 @@ function renderSavedQuizSubmissions() {
 async function submitStudentExam() {
   if (!examStarted) return;
   const lesson = getLessonData();
+  const activeQuiz = getActivePublishedQuiz();
   const maximum = [...(lesson.listening || []), ...(lesson.reading || [])]
     .reduce((sum, question) => sum + Number(question.points || 1), 0);
   const earned = Object.values(window.__toyboxScore || {}).reduce((sum, points) => sum + Number(points || 0), 0);
   const student = getActiveStudent();
+  const newSubmissionRef = window.db ? window.db.ref('toybox_submissions').push() : null;
   const submission = {
+    submissionId: newSubmissionRef?.key || window.crypto.randomUUID(),
     submittedAt: new Date().toISOString(),
-    quizName: getActivePublishedQuiz()?.name || 'Bài học hiện tại',
+    lessonId: activeQuiz?.id || 'current-lesson',
+    lessonTitle: activeQuiz?.name || 'Bài học hiện tại',
+    quizName: activeQuiz?.name || 'Bài học hiện tại',
     studentId: student?.id || '',
     studentName: student?.name || 'Học sinh',
     studentClass: student?.className || '',
@@ -1701,11 +1822,11 @@ async function submitStudentExam() {
     maximum,
     answers: collectExamResponses()
   };
-  try {
-    const submissions = getSavedStudentSubmissions();
-    submissions.push(submission);
-    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(submissions.slice(-20)));
-  } catch (error) {
+  persistStudentSubmissions([...getSavedStudentSubmissions(), submission]);
+  renderSavedQuizSubmissions();
+  if (newSubmissionRef) {
+    newSubmissionRef.set(submission)
+      .catch((error) => reportDataSyncError('quiz submissions', error));
   }
 
   examStarted = false;
@@ -2297,6 +2418,8 @@ function bindEvents() {
   else showAccountGate(getStudentAccounts().length ? 'login' : 'register');
   startLessonSync();
   startDocumentSync();
+  startStudentAccountSync();
+  startSubmissionSync();
 }
 
 function initializeApp() {
