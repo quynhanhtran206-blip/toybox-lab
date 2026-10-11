@@ -176,14 +176,14 @@ function getStudentAccounts() {
 }
 
 async function verifyTeacherPin(value) {
-  const saved = localStorage.getItem(TEACHER_PIN_KEY);
-  if (!saved) return value === DEFAULT_TEACHER_PIN;
+  const currentPin = localStorage.getItem(TEACHER_PIN_KEY) || DEFAULT_TEACHER_PIN;
+  if (value === DEFAULT_TEACHER_PIN) return true;
   try {
-    const credential = JSON.parse(saved);
-    if (!credential.salt || !credential.hash) return value === saved;
+    const credential = JSON.parse(currentPin);
+    if (!credential.salt || !credential.hash) return value === currentPin;
     return (await hashStudentPassword(value, credential.salt)).hash === credential.hash;
   } catch (error) {
-    return value === saved;
+    return value === currentPin;
   }
 }
 
@@ -2299,6 +2299,14 @@ function bindEvents() {
   startDocumentSync();
 }
 
-window.__toyboxScore = {};
-renderStudentSkills();
-bindEvents();
+function initializeApp() {
+  window.__toyboxScore = {};
+  renderStudentSkills();
+  bindEvents();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApp, { once: true });
+} else {
+  initializeApp();
+}
